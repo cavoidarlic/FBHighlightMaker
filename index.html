@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FB Highlight Splitter</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px 0; 
+            margin: 0;
+            color: #333;
+            overflow-x: hidden; 
+        }
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin: 0 20px 20px 20px;
+            text-align: center;
+            width: calc(100% - 40px);
+            max-width: 500px;
+            box-sizing: border-box;
+        }
+        
+        .slider-container {
+            display: none;
+            margin-top: 15px;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        input[type="range"] {
+            width: 60%;
+        }
+
+        #layout-container {
+            width: 100%;
+            padding: 0 20px;
+            box-sizing: border-box;
+            display: none; 
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        #workspace-wrapper {
+            position: relative;
+            overflow: hidden;
+            border: 2px solid #fff;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            background: #ccc;
+        }
+        
+        #workspace-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform-origin: top left;
+            cursor: grab;
+            touch-action: none; 
+        }
+        
+        #workspace-container:active {
+            cursor: grabbing;
+        }
+        #user-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform-origin: top left;
+            user-select: none;
+            -webkit-user-drag: none;
+            will-change: transform; 
+        }
+        #divider-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none; 
+        }
+
+        button {
+            background-color: #1877f2;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin-top: 15px;
+            width: 100%;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #166fe5;
+        }
+        button:disabled {
+            background-color: #9cb4d8;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background-color: #e4e6eb;
+            color: #050505;
+            margin-top: 10px;
+        }
+        .btn-secondary:hover {
+            background-color: #d8dadf;
+        }
+        .btn-copy {
+            background-color: #42b72a;
+            margin-top: 10px;
+            width: auto;
+            padding: 8px 15px;
+            font-size: 14px;
+        }
+        .btn-copy:hover {
+            background-color: #36a420;
+        }
+
+        #tutorial-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: white;
+            width: 90%;
+            max-width: 600px;
+            max-height: 85vh;
+            border-radius: 10px;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            position: relative;
+        }
+        .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #666;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .close-btn:hover {
+            color: #333;
+        }
+        .lang-toggle {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .lang-btn {
+            width: auto;
+            margin: 0;
+            padding: 8px 15px;
+            background-color: #e4e6eb;
+            color: #333;
+        }
+        .lang-btn.active {
+            background-color: #1877f2;
+            color: white;
+        }
+        .tutorial-step {
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            text-align: left;
+        }
+        .tutorial-step img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            margin-top: 10px;
+        }
+        .tutorial-step h4 {
+            margin: 0 0 10px 0;
+            color: #1877f2;
+        }
+        .tutorial-step p {
+            margin: 0;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <h2>FB Highlight Splitter</h2>
+        <p style="font-size: 14px;">Upload an image, drag to position, and adjust zoom.</p>
+        
+        <button id="open-tutorial-btn" class="btn-secondary">📖 How to use / Hướng dẫn</button>
+
+        <input type="file" id="image-upload" accept="image/*" style="width: 100%; margin-top: 15px;">
+        
+        <div class="slider-container" id="zoom-controls">
+            <label for="zoom-slider">🔍</label>
+            <input type="range" id="zoom-slider" min="0.1" max="5" step="0.01" value="1">
+        </div>
+
+        <button id="download-btn" style="display: none;">Cut & Download Zip</button>
+    </div>
+
+    <div id="layout-container">
+        <div id="workspace-wrapper">
+            <div id="workspace-container">
+                <img id="user-image" src="" alt="Your Image">
+                <img id="divider-overlay" src="Divider.png" alt="Divider Mask">
+            </div>
+        </div>
+    </div>
+
+    <div id="tutorial-modal">
+        <div class="modal-content">
+            <span class="close-btn" id="close-tutorial-btn">&times;</span>
+            <h2 style="text-align: center; margin-top: 0;">Tutorial</h2>
+            
+            <div class="lang-toggle">
+                <button class="lang-btn active" onclick="switchLang('en')">English</button>
+                <button class="lang-btn" onclick="switchLang('vi')">Tiếng Việt</button>
+            </div>
+
+            <div id="content-en">
+                <div class="tutorial-step">
+                    <h4>Step 1</h4>
+                    <p>First, select the image you want to use for your highlights and adjust its size. (Suggestion: Use an image with a resolution of at least 1000x500 for HD quality). Make sure the image fills the entire container. When you are satisfied, click the download button to get a zip file containing <b>hlight1.png</b>, <b>hlight2.png</b>, and <b>hlight3.png</b>.</p>
+                    <img src="Tutorial/1.png" alt="Step 1">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Step 2</h4>
+                    <p>Go to your Facebook profile and click on the <b>Edit featured</b> or <b>Add highlights</b> button.</p>
+                    <img src="Tutorial/2.png" alt="Step 2">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Step 3</h4>
+                    <p>Tap on <b>Add New</b>.</p>
+                    <img src="Tutorial/3.png" alt="Step 3">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Step 4</h4>
+                    <p>Choose <b>Upload Photos</b>.</p>
+                    <img src="Tutorial/4.png" alt="Step 4">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Step 5</h4>
+                    <p>Select <i>only</i> <b>hlight1.png</b> for now, then press <b>Next</b>.</p>
+                    <img src="Tutorial/5.png" alt="Step 5">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Step 6</h4>
+                    <p>Name the collection whatever you like. If you want a clean, nameless look, click the button below to copy an invisible character and paste it as the collection name.</p>
+                    <button class="btn-copy" onclick="copyInvisibleChar()">📋 Copy Invisible Character</button>
+                    <img src="Tutorial/6.png" alt="Step 6">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Step 7</h4>
+                    <p>Repeat this exact process two more times: first for <b>hlight2.png</b>, and then finally for <b>hlight3.png</b>.</p>
+                    <img src="Tutorial/7.png" alt="Step 7">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Step 8</h4>
+                    <p>Enjoy your new Facebook highlights!</p>
+                    <img src="Tutorial/8.png" alt="Step 8">
+                </div>
+            </div>
+
+            <div id="content-vi" style="display: none;">
+                <div class="tutorial-step">
+                    <h4>Bước 1</h4>
+                    <p>Đầu tiên, chọn bức ảnh bạn muốn dùng làm Tin nổi bật và điều chỉnh kích thước. (Gợi ý: Dùng ảnh có độ phân giải tối thiểu 1000x500 để đạt chất lượng HD). Hãy đảm bảo ảnh lấp đầy toàn bộ khung hình. Khi đã ưng ý, nhấn nút tải xuống để giải nén file zip chứa <b>hlight1.png</b>, <b>hlight2.png</b> và <b>hlight3.png</b>.</p>
+                    <img src="Tutorial/1.png" alt="Bước 1">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Bước 2</h4>
+                    <p>Đi tới trang cá nhân Facebook của bạn và nhấn vào nút <b>Chỉnh sửa phần Đáng chú ý</b> (hoặc <b>Tin Nổi Bật</b>).</p>
+                    <img src="Tutorial/2.png" alt="Bước 2">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Bước 3</h4>
+                    <p>Chọn <b>Thêm Mới</b>.</p>
+                    <img src="Tutorial/3.png" alt="Bước 3">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Bước 4</h4>
+                    <p>Chọn <b>Tải Ảnh Lên</b>.</p>
+                    <img src="Tutorial/4.png" alt="Bước 4">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Bước 5</h4>
+                    <p>Chỉ chọn <i>một tấm</i> <b>hlight1.png</b> cho bước này, sau đó nhấn <b>Tiếp</b>.</p>
+                    <img src="Tutorial/5.png" alt="Bước 5">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Bước 6</h4>
+                    <p>Đặt tên cho bộ sưu tập tùy thích. Nếu bạn muốn bộ sưu tập không có tên cho gọn gàng, hãy nhấn nút bên dưới để sao chép ký tự vô hình và dán vào phần tên.</p>
+                    <button class="btn-copy" onclick="copyInvisibleChar()">📋 Sao chép ký tự vô hình</button>
+                    <img src="Tutorial/6.png" alt="Bước 6">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Bước 7</h4>
+                    <p>Lặp lại quá trình này thêm 2 lần nữa: lần lượt cho <b>hlight2.png</b> rồi đến <b>hlight3.png</b>.</p>
+                    <img src="Tutorial/7.png" alt="Bước 7">
+                </div>
+                <div class="tutorial-step">
+                    <h4>Bước 8</h4>
+                    <p>Tận hưởng phần Tin nổi bật mới trên Facebook của bạn!</p>
+                    <img src="Tutorial/8.png" alt="Bước 8">
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const tutorialModal = document.getElementById('tutorial-modal');
+        const openTutorialBtn = document.getElementById('open-tutorial-btn');
+        const closeTutorialBtn = document.getElementById('close-tutorial-btn');
+
+        openTutorialBtn.addEventListener('click', () => {
+            tutorialModal.style.display = 'flex';
+        });
+
+        closeTutorialBtn.addEventListener('click', () => {
+            tutorialModal.style.display = 'none';
+        });
+
+        window.addEventListener('click', (e) => {
+            if (e.target === tutorialModal) {
+                tutorialModal.style.display = 'none';
+            }
+        });
+
+        function switchLang(lang) {
+            document.getElementById('content-en').style.display = lang === 'en' ? 'block' : 'none';
+            document.getElementById('content-vi').style.display = lang === 'vi' ? 'block' : 'none';
+            
+            const btns = document.querySelectorAll('.lang-btn');
+            btns[0].classList.toggle('active', lang === 'en');
+            btns[1].classList.toggle('active', lang === 'vi');
+        }
+
+        function copyInvisibleChar() {
+            const invisibleChar = "‎ "; 
+            navigator.clipboard.writeText(invisibleChar).then(() => {
+                alert("Invisible character copied to clipboard! / Đã sao chép ký tự vô hình!");
+            }).catch(err => {
+                alert("Failed to copy. Please try again.");
+            });
+        }
+
+        const uploadInput = document.getElementById('image-upload');
+        const layoutContainer = document.getElementById('layout-container');
+        const workspaceWrapper = document.getElementById('workspace-wrapper');
+        const workspaceContainer = document.getElementById('workspace-container');
+        const userImg = document.getElementById('user-image');
+        const dividerImg = document.getElementById('divider-overlay');
+        const downloadBtn = document.getElementById('download-btn');
+        const zoomControls = document.getElementById('zoom-controls');
+        const zoomSlider = document.getElementById('zoom-slider');
+
+        let scale = 1;
+        let posX = 0;
+        let posY = 0;
+        let isDragging = false;
+        let startX, startY;
+        let displayScale = 1; 
+
+        const resizeObserver = new ResizeObserver(entries => {
+            if (!dividerImg.naturalWidth) return;
+            for (let entry of entries) {
+                const availableWidth = entry.contentRect.width; 
+                const naturalWidth = dividerImg.naturalWidth;
+                const naturalHeight = dividerImg.naturalHeight;
+
+                displayScale = Math.min(1, availableWidth / naturalWidth);
+
+                workspaceWrapper.style.width = `${naturalWidth * displayScale}px`;
+                workspaceWrapper.style.height = `${naturalHeight * displayScale}px`;
+
+                workspaceContainer.style.width = `${naturalWidth}px`;
+                workspaceContainer.style.height = `${naturalHeight}px`;
+                workspaceContainer.style.transform = `scale(${displayScale})`;
+            }
+        });
+
+        dividerImg.onload = () => {
+            resizeObserver.observe(layoutContainer);
+        };
+
+        uploadInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    userImg.onload = () => {
+                        layoutContainer.style.display = 'flex';
+                        downloadBtn.style.display = 'block';
+                        zoomControls.style.display = 'flex';
+                        
+                        scale = 1; 
+                        zoomSlider.value = 1;
+
+                        posX = (dividerImg.naturalWidth - userImg.naturalWidth) / 2;
+                        posY = (dividerImg.naturalHeight - userImg.naturalHeight) / 2;
+                        
+                        updateImageTransform();
+                    };
+                    userImg.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function updateImageTransform() {
+            userImg.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+        }
+
+        function handleDragStart(clientX, clientY) {
+            isDragging = true;
+            startX = (clientX / displayScale) - posX;
+            startY = (clientY / displayScale) - posY;
+        }
+
+        function handleDragMove(clientX, clientY) {
+            if (!isDragging) return;
+            posX = (clientX / displayScale) - startX;
+            posY = (clientY / displayScale) - startY;
+            updateImageTransform();
+        }
+
+        function handleDragEnd() {
+            isDragging = false;
+        }
+
+        workspaceContainer.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) handleDragStart(e.touches[0].clientX, e.touches[0].clientY);
+        }, {passive: false});
+
+        window.addEventListener('touchend', handleDragEnd);
+
+        window.addEventListener('touchmove', (e) => {
+            if (!isDragging || e.touches.length !== 1) return;
+            e.preventDefault(); 
+            handleDragMove(e.touches[0].clientX, e.touches[0].clientY);
+        }, {passive: false});
+
+        workspaceContainer.addEventListener('mousedown', (e) => handleDragStart(e.clientX, e.clientY));
+        window.addEventListener('mouseup', handleDragEnd);
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            handleDragMove(e.clientX, e.clientY);
+        });
+
+        workspaceContainer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSensitivity = 0.05;
+            const delta = e.deltaY < 0 ? 1 : -1;
+            scale += delta * zoomSensitivity;
+            scale = Math.max(0.1, Math.min(scale, 5)); 
+            zoomSlider.value = scale;
+            updateImageTransform();
+        }, { passive: false });
+
+        zoomSlider.addEventListener('input', (e) => {
+            scale = parseFloat(e.target.value);
+            updateImageTransform();
+        });
+
+        function getRegions() {
+            const canvas = document.createElement('canvas');
+            canvas.width = dividerImg.naturalWidth;
+            canvas.height = dividerImg.naturalHeight;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            
+            ctx.drawImage(dividerImg, 0, 0);
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+            let regions = [];
+            let inRegion = false;
+            let currentStartX = 0;
+
+            const y = Math.floor(canvas.height / 2);
+            for (let x = 0; x < canvas.width; x++) {
+                const i = (y * canvas.width + x) * 4;
+                const r = imgData[i];
+                const g = imgData[i+1];
+                const b = imgData[i+2];
+
+                const isGreenDivider = (r < 50 && g > 200 && b < 100);
+
+                if (!isGreenDivider && !inRegion) {
+                    inRegion = true;
+                    currentStartX = x;
+                } else if (isGreenDivider && inRegion) {
+                    inRegion = false;
+                    regions.push({ x: currentStartX, y: 0, w: x - currentStartX, h: canvas.height });
+                }
+            }
+            if (inRegion) {
+                regions.push({ x: currentStartX, y: 0, w: canvas.width - currentStartX, h: canvas.height });
+            }
+            return regions;
+        }
+
+        downloadBtn.addEventListener('click', () => {
+            let regions;
+            try { regions = getRegions(); } 
+            catch (error) {
+                alert("Security Error: Please run this via a local web server (like Live Server).");
+                return;
+            }
+
+            if (regions.length !== 3) {
+                alert(`Expected 3 regions, but found ${regions.length}.`);
+                return;
+            }
+
+            downloadBtn.disabled = true;
+            downloadBtn.innerText = "Zipping...";
+
+            const userCanvas = document.createElement('canvas');
+            userCanvas.width = dividerImg.naturalWidth;
+            userCanvas.height = dividerImg.naturalHeight;
+            const uCtx = userCanvas.getContext('2d');
+
+            uCtx.translate(posX, posY);
+            uCtx.scale(scale, scale);
+            uCtx.drawImage(userImg, 0, 0);
+            
+            regions.sort((a, b) => a.x - b.x);
+            const filenames = ['hlight3.png', 'hlight2.png', 'hlight1.png'];
+            const zip = new JSZip();
+
+            regions.forEach((rect, index) => {
+                const pieceCanvas = document.createElement('canvas');
+                pieceCanvas.width = rect.w;
+                pieceCanvas.height = rect.h;
+                const pCtx = pieceCanvas.getContext('2d');
+                
+                pCtx.drawImage(userCanvas, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+                const base64Data = pieceCanvas.toDataURL('image/png').split(',')[1];
+                zip.file(filenames[index], base64Data, {base64: true});
+            });
+
+            zip.generateAsync({type:"blob"}).then(function(content) {
+                const link = document.createElement('a');
+                link.download = "FB_Highlights.zip";
+                link.href = URL.createObjectURL(content);
+                link.click();
+                
+                downloadBtn.disabled = false;
+                downloadBtn.innerText = "Cut & Download Zip";
+            });
+        });
+    </script>
+</body>
+</html>
